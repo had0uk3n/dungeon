@@ -7,6 +7,7 @@ const WHITE = 0xffffff;
 const FILL_COLOR = BLACK;
 const DEBUG_STROKE_COLOR = WHITE;
 const DEBUG_FILL_COLOR = 0xff0000;
+const VELOCITY = 200;
 
 // Shortcuts
 const { Circle, Line, Point, Rectangle } = Phaser.Geom;
@@ -41,17 +42,38 @@ class Game extends Phaser.Scene
     {
         this.map = this.make.tilemap({ key: 'map' });
 
-        const tiles = this.map.addTilesetImage('tiles_atlas', 'tiles');
+        //const tiles = this.map.addTilesetImage('tiles_atlas', 'tiles');
 
-        this.layerFloor = this.map.createLayer(0, tiles, 0, 0); // floor
-        this.layerWalls = this.map.createLayer(1, tiles, 0, 0); // walls
+        //this.layerFloor = this.map.createLayer(0, tiles, 0, 0); // floor
+        //this.layerWalls = this.map.createLayer(1, tiles, 0, 0); // walls
         // all tiles can collide, we just use collider for layer
-        this.map.setCollisionBetween(0, 5);
+        //this.map.setCollisionBetween(0, 5);
+
+        const tsFloor = this.map.addTilesetImage('tiles_floor', 'tiles_floor');
+        const tsWalls = this.map.addTilesetImage('tiles_walls', 'tiles_walls');
+
+        this.layerFloor = this.map.createLayer('floor', [tsFloor, tsFloor], 0, 0);
+        this.layerWalls = this.map.createLayer('walls', [tsWalls, tsWalls], 0, 0);
 
         const mapRects = this.map.getObjectLayer('rects')['objects'];
 
-        this.player = this.physics.add.sprite(120, 140, 'player', 1);
-        this.player.setScale(1.4);
+        this.layerWalls.setCollisionByProperty({ collides: true });
+
+        //this.player = this.physics.add.sprite(120, 140, 'player', 1);
+
+        const cx = this.map.widthInPixels  / 2;
+        const cy = this.map.heightInPixels / 2;
+
+        this.lightRadius = 300;
+
+        this.maskSprite = this.add.image(0, 0, 'mask').setVisible(false);
+        this.maskSprite.setDisplaySize(this.lightRadius * 2, this.lightRadius * 2);
+
+
+
+        this.player = this.physics.add.sprite(cx, cy, 'player', 1);
+
+        this.player.setScale(2);
 
         this.physics.add.collider(this.player, this.layerWalls);
 
@@ -81,7 +103,7 @@ class Game extends Phaser.Scene
 
         // Mask objects and background.
         //this.layerWalls.setMask(mask);
-        this.layerFloor.setMask(mask);
+        //this.layerFloor.setMask(mask);
 
         // Create Rectangles from wall tiles
         const wallsRects = [];
@@ -89,6 +111,8 @@ class Game extends Phaser.Scene
             const rect = mapRects[i];
             wallsRects.push(new Rectangle(rect.x, rect.y, rect.width, rect.height));
         }
+
+        //const wallsRects = buildRectsFromLayerByProperty(this.layerWalls);
 
         // Rectangles, will form the edges
         const rects = wallsRects;
@@ -106,6 +130,15 @@ class Game extends Phaser.Scene
         draw(this.graphics, calc(this.player, this.vertices, this.edges, this.rays), this.rays, this.edges);
 
         this.addMobileButtons();
+
+        // this.physics.world.createDebugGraphic();
+        //
+        // const g = this.add.graphics();
+        // this.layerWalls.renderDebug(g, {
+        //     tileColor: null,
+        //     collidingTileColor: new Phaser.Display.Color(243, 134, 48, 120),
+        //     faceColor: new Phaser.Display.Color(40, 39, 37, 200)
+        // });
     }
 
     update (time, delta)
@@ -115,21 +148,21 @@ class Game extends Phaser.Scene
         // Horizontal movement
         if (this.cursors.left.isDown || this.moveLeft)
         {
-            this.player.body.setVelocityX(-100);
+            this.player.body.setVelocityX(-VELOCITY);
         }
         else if (this.cursors.right.isDown || this.moveRight)
         {
-            this.player.body.setVelocityX(100);
+            this.player.body.setVelocityX(VELOCITY);
         }
 
         // Vertical movement
         if (this.cursors.up.isDown || this.moveUp)
         {
-            this.player.body.setVelocityY(-100);
+            this.player.body.setVelocityY(-VELOCITY);
         }
         else if (this.cursors.down.isDown || this.moveDown)
         {
-            this.player.body.setVelocityY(100);
+            this.player.body.setVelocityY(VELOCITY);
         }
 
         // Update the animation last and give left/right animations precedence over up/down animations
@@ -179,7 +212,14 @@ class Game extends Phaser.Scene
         //  We - 107, because the mask image is 213px wide, so this puts it on the middle of the player
         //  We then minus the scrollX/Y values, because the RenderTexture is pinned to the screen and doesn't scroll
         // Upd: offset is half the mask image width
-        this.rt.erase('mask', (this.player.x - 180) - cam.scrollX, (this.player.y - 180) - cam.scrollY);
+        //this.rt.erase('mask', (this.player.x - 180) - cam.scrollX, (this.player.y - 180) - cam.scrollY);
+        const half = this.lightRadius;
+        this.rt.erase(
+            this.maskSprite,
+            (this.player.x - 0) - cam.scrollX,
+            (this.player.y - 0) - cam.scrollY
+        );
+
     }
 
     updateAlphaOnMap ()
@@ -424,4 +464,22 @@ function sortClockwise (points, center) {
 // eslint-disable-next-line no-unused-vars
 function pointInRectangles (point, rects) {
     return rects.some((rect) => ContainsPoint(rect, point));
+}
+
+function buildRectsFromLayerByProperty(layer) {
+    const rects = [];
+    layer.forEachTile(tile => {
+        if (!tile) return;
+
+        // после setCollisionByProperty Phaser помечает tile.collides
+        if (tile.collides === true) {
+            rects.push(new Phaser.Geom.Rectangle(
+                tile.getLeft(),
+                tile.getTop(),
+                tile.width,
+                tile.height
+            ));
+        }
+    });
+    return rects;
 }
