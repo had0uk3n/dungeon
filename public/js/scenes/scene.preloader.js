@@ -11,10 +11,11 @@ var sceneConfigPreloader = {
         });
 
         //this.load.image('tiles', 'assets/atlas.png');
-        //this.load.tilemapTiledJSON('map', 'assets/dungeon1.tmj');
+        //this.load.tilemapTiledJSON('map', 'assets/dungeon1.tmj?v=2');
         this.load.image('tiles_floor', 'assets/tiles_floor.png');
         this.load.image('tiles_walls', 'assets/tiles_walls.png');
         this.load.tilemapTiledJSON('map', 'assets/maze.tmj');
+
 
         this.load.spritesheet('player', 'assets/spaceman.png', { frameWidth: 16, frameHeight: 16 });
         this.load.image('mask', 'assets/mask1.png?v=2');

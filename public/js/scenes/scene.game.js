@@ -32,6 +32,8 @@ class Game extends Phaser.Scene
     moveDown;
     moveLeft;
     moveRight;
+    scaleX;
+    scaleY;
 
     constructor ()
     {
@@ -42,18 +44,12 @@ class Game extends Phaser.Scene
     {
         this.map = this.make.tilemap({ key: 'map' });
 
-        //const tiles = this.map.addTilesetImage('tiles_atlas', 'tiles');
+        const tiles = this.map.addTilesetImage('tiles_atlas', 'tiles');
 
-        //this.layerFloor = this.map.createLayer(0, tiles, 0, 0); // floor
-        //this.layerWalls = this.map.createLayer(1, tiles, 0, 0); // walls
+        this.layerFloor = this.map.createLayer(0, tiles, 0, 0); // floor
+        this.layerWalls = this.map.createLayer(1, tiles, 0, 0); // walls
         // all tiles can collide, we just use collider for layer
-        //this.map.setCollisionBetween(0, 5);
-
-        const tsFloor = this.map.addTilesetImage('tiles_floor', 'tiles_floor');
-        const tsWalls = this.map.addTilesetImage('tiles_walls', 'tiles_walls');
-
-        this.layerFloor = this.map.createLayer('floor', [tsFloor, tsFloor], 0, 0);
-        this.layerWalls = this.map.createLayer('walls', [tsWalls, tsWalls], 0, 0);
+        this.map.setCollisionBetween(0, 5);
 
         const mapRects = this.map.getObjectLayer('rects')['objects'];
 
@@ -83,11 +79,17 @@ class Game extends Phaser.Scene
         this.cursors = this.input.keyboard.createCursorKeys();
 
         // https://phaser.io/examples/v3.85.0/tilemap/collision/view/tilemap-spotlight
+        //this.rt = this.add.renderTexture(0, 0, this.scale.width, this.scale.height);
+        // TODO: fix scale
         this.rt = this.add.renderTexture(0, 0, this.scale.width, this.scale.height);
+        // this.scale.on('resize', (gameSize, baseSize, displaySize, resolution) => {
+        //
+        //     this.rt.setSize(1200, 900);
+        // })
+
         //  Make sure it doesn't scroll with the camera
         this.rt.setOrigin(0, 0);
         this.rt.setScrollFactor(0, 0);
-
 
         this.graphics = this.make.graphics({ lineStyle: { color: DEBUG_STROKE_COLOR, width: 0.5 } });
 
@@ -106,16 +108,25 @@ class Game extends Phaser.Scene
         //this.layerFloor.setMask(mask);
 
         // Create Rectangles from wall tiles
-        const wallsRects = [];
-        for (let i = 0; i < mapRects.length; i++) {
-            const rect = mapRects[i];
-            wallsRects.push(new Rectangle(rect.x, rect.y, rect.width, rect.height));
+        const rects = getBigRectsFromWallLayer(this.layerWalls);
+
+        // fill debug rects
+        if (DEBUG) {
+            const rectGraphics = this.add.graphics({ fillStyle: { color: 0x0000aa } });
+            for (const rect of rects) {
+                rectGraphics.fillRectShape(rect);
+            }
+
+            const rectVertGraphics = this.add.graphics({ fillStyle: { color: 0x00aaaa } });
+            for (const rect of rects) {
+                const verts = getRectVertices(rect);
+                for (const vert of verts) {
+                    rectVertGraphics.fillPointShape(vert, 4);
+                }
+            }
+
+            console.log('rect length', rects.length);
         }
-
-        //const wallsRects = buildRectsFromLayerByProperty(this.layerWalls);
-
-        // Rectangles, will form the edges
-        const rects = wallsRects;
 
         // Convert rectangles into edges (line segments)
         this.edges = rects.flatMap(getRectEdges);
@@ -127,7 +138,11 @@ class Game extends Phaser.Scene
         this.rays = this.vertices.map(() => new Line());
 
         // Draw the mask once
-        draw(this.graphics, calc(this.player, this.vertices, this.edges, this.rays), this.rays, this.edges);
+        //draw(this.graphics, calc(this.player, this.vertices, this.edges, this.rays), this.rays, this.edges);
+
+        this.scaleX = this.scale.width / 800;
+        this.scaleY = this.scale.height / 600;
+        console.log('scales', this.scaleX, this.scaleY);
 
         this.addMobileButtons();
 
@@ -144,25 +159,26 @@ class Game extends Phaser.Scene
     update (time, delta)
     {
         this.player.body.setVelocity(0);
+        const moveSpeed = 300;
 
         // Horizontal movement
         if (this.cursors.left.isDown || this.moveLeft)
         {
-            this.player.body.setVelocityX(-VELOCITY);
+            this.player.body.setVelocityX(-1 * moveSpeed);
         }
         else if (this.cursors.right.isDown || this.moveRight)
         {
-            this.player.body.setVelocityX(VELOCITY);
+            this.player.body.setVelocityX(moveSpeed);
         }
 
         // Vertical movement
         if (this.cursors.up.isDown || this.moveUp)
         {
-            this.player.body.setVelocityY(-VELOCITY);
+            this.player.body.setVelocityY(-1 * moveSpeed);
         }
         else if (this.cursors.down.isDown || this.moveDown)
         {
-            this.player.body.setVelocityY(VELOCITY);
+            this.player.body.setVelocityY(moveSpeed);
         }
 
         // Update the animation last and give left/right animations precedence over up/down animations
@@ -247,87 +263,108 @@ class Game extends Phaser.Scene
 
     addMobileButtons ()
     {
-        const  posLeftX = 100;
-        const  posLeftY = 500;
-        const  alpha = 0.8;
+        const posLeftX = 100;
+        const posBottomY = 600 * this.scaleY - 100;
 
-        const buttonLeft = this.add.sprite(posLeftX, posLeftY, 'controls', 'left1');
+        const container = this.add.container();
+        container.setAlpha(0.6);
+        container.setScrollFactor(0, 0);
+
+        const buttonLeft = this.add.sprite(posLeftX, posBottomY, 'controls', 'left1');
+        container.add(buttonLeft);
         buttonLeft.setOrigin(1, 0.5);
-        buttonLeft.alpha = alpha;
+        buttonLeft.setScrollFactor(0, 0);
         buttonLeft.setInteractive({ useHandCursor: true });
         buttonLeft.on('pointerdown', () => this.moveLeft = true);
         buttonLeft.on('pointerup', () => this.moveLeft = false);
-        buttonLeft.setScrollFactor(0, 0);
 
-        const buttonRight = this.add.sprite(posLeftX, posLeftY, 'controls', 'right1');
+        const buttonRight = this.add.sprite(posLeftX, posBottomY, 'controls', 'right1');
+        container.add(buttonRight);
         buttonRight.setOrigin(0, 0.5);
-        buttonRight.alpha = alpha;
+        buttonRight.setScrollFactor(0, 0);
         buttonRight.setInteractive({ useHandCursor: true });
         buttonRight.on('pointerdown', () => this.moveRight = true);
         buttonRight.on('pointerup', () => this.moveRight = false);
-        buttonRight.setScrollFactor(0, 0);
 
-        const buttonDown = this.add.sprite(posLeftX, posLeftY, 'controls', 'down1');
+        const buttonDown = this.add.sprite(posLeftX, posBottomY, 'controls', 'down1');
+        container.add(buttonDown);
         buttonDown.setOrigin(0.5, 0);
-        buttonDown.alpha = alpha;
+        buttonDown.setScrollFactor(0, 0);
         buttonDown.setInteractive({ useHandCursor: true });
         buttonDown.on('pointerdown', () => this.moveDown = true);
         buttonDown.on('pointerup', () => this.moveDown = false);
-        buttonDown.setScrollFactor(0, 0);
 
-        const buttonUp = this.add.sprite(posLeftX, posLeftY, 'controls', 'up1');
+        const buttonUp = this.add.sprite(posLeftX, posBottomY, 'controls', 'up1');
+        container.add(buttonUp);
         buttonUp.setOrigin(0.5, 1);
-        buttonUp.alpha = alpha;
+        buttonUp.setScrollFactor(0, 0);
         buttonUp.setInteractive({ useHandCursor: true });
         buttonUp.on('pointerdown', () => this.moveUp = true);
         buttonUp.on('pointerup', () => this.moveUp = false);
-        buttonUp.setScrollFactor(0, 0);
 
-        const buttonFs = this.add.sprite(800 - posLeftX, 60, 'controls', 'fullscreen1');
-        buttonFs.setOrigin(0.5, 0.5);
-        buttonFs.alpha = alpha;
-        buttonFs.setInteractive({ useHandCursor: true });
-        buttonUp.setScrollFactor(0, 0);
+        if (this.sys.game.device.fullscreen.available) {
+            const buttonFs = this.add.sprite(800 * this.scaleX - 30, 30, 'controls', 'fullscreen1');
+            container.add(buttonFs);
+            buttonFs.setOrigin(1, 0);
+            buttonFs.setScrollFactor(0, 0);
 
-        buttonFs.on('pointerup', function ()
-        {
-            if (this.scale.isFullscreen)
-            {
-                buttonFs.setFrame('fullscreen1');
-                this.scale.stopFullscreen();
-            }
-            else
-            {
-                buttonFs.setFrame('fullscreen2');
-                this.scale.startFullscreen();
-            }
-        }, this);
+            buttonFs.setInteractive({ useHandCursor: true });
+
+            buttonFs.on('pointerup', function (){
+                if (this.scale.isFullscreen) {
+                    this.scale.stopFullscreen();
+                } else {
+                    this.scale.startFullscreen();
+                }
+            }, this);
+        }
     }
 }
 
 var sceneConfigGame = new Game();
 
+function getTilesBigRects(tileLayer) {
+    const rects = [];
+
+    tileLayer.forEachTile((tile) => {
+        if (tile.index === -1) return;
+
+        const worldX = tile.getLeft();
+        const worldY = tile.getTop();
+        const width = tile.width;
+        const height = tile.height;
+
+        rects.push(new Rectangle(worldX, worldY, width, height));
+    });
+
+    return rects;
+}
 
 // Draw the mask shape, from vertices
 function draw (graphics, vertices, rays, edges) {
+    if (vertices.length < 3) {
+        graphics.clear()
+        return;
+    }
+
     graphics
         .clear()
         .fillStyle(FILL_COLOR)
         .fillPoints(vertices, true);
 
     if (DEBUG) {
-        // for (const ray of rays) {
-        //     graphics.strokeLineShape(ray);
-        // };
-        // for (const edge of edges) {
-        //     graphics.strokeLineShape(edge);
-        // };
+        for (const ray of rays) {
+            graphics.strokeLineShape(ray);
+        }
+        for (const edge of edges) {
+            graphics.strokeLineShape(edge);
+        }
 
         graphics.fillStyle(DEBUG_FILL_COLOR);
 
         for (const vert of vertices) {
             graphics.fillPointShape(vert, 4);
-        };
+        }
     }
 }
 
@@ -464,6 +501,92 @@ function sortClockwise (points, center) {
 // eslint-disable-next-line no-unused-vars
 function pointInRectangles (point, rects) {
     return rects.some((rect) => ContainsPoint(rect, point));
+}
+
+function getRectsFromTilesInRadius(layer, x, y, radius) {
+    const tiles = layer.getTilesWithinWorldXY(x - radius, y - radius, radius * 2, radius * 2);
+    const rects = [];
+
+    tiles.forEach((tile) => {
+        if (tile.index === -1) return;
+
+        const worldX = tile.getLeft();
+        const worldY = tile.getTop();
+        const width = tile.width;
+        const height = tile.height;
+
+        rects.push(new Rectangle(worldX, worldY, width, height));
+    });
+
+    return rects;
+}
+
+function getBigRectsFromWallLayer(layer) {
+    const rects = [];
+    const visited = new Set();
+
+    const width = layer.tilemap.width;
+    const height = layer.tilemap.height;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const tile = layer.getTileAt(x, y);
+            if (!tile || tile.index === -1) continue;
+
+            const key = `${x},${y}`;
+            if (visited.has(key)) continue;
+
+            // Start a new rectangle
+            let rectWidth = 1;
+            let rectHeight = 1;
+
+            // Expand to the right
+            while (x + rectWidth < width) {
+                const nextTile = layer.getTileAt(x + rectWidth, y);
+                if (nextTile && nextTile.index !== -1) {
+                    visited.add(`${x + rectWidth},${y}`);
+                    rectWidth++;
+                } else {
+                    break;
+                }
+            }
+
+            // Expand downwards
+            let canExpandDown = true;
+            while (canExpandDown && (y + rectHeight) < height) {
+                for (let i = 0; i < rectWidth; i++) {
+                    const nextTile = layer.getTileAt(x + i, y + rectHeight);
+                    if (!nextTile || nextTile.index === -1) {
+                        canExpandDown = false;
+                        break;
+                    }
+                }
+                if (canExpandDown) {
+                    for (let i = 0; i < rectWidth; i++) {
+                        visited.add(`${x + i},${y + rectHeight}`);
+                    }
+                    rectHeight++;
+                }
+            }
+
+            // Mark all tiles in the rectangle as visited
+            for (let dy = 0; dy < rectHeight; dy++) {
+                for (let dx = 0; dx < rectWidth; dx++) {
+                    visited.add(`${x + dx},${y + dy}`);
+                }
+            }
+
+            // Add the rectangle to the list
+            const worldX = tile.getLeft();
+            const worldY = tile.getTop();
+            const worldWidth = rectWidth * tile.width;
+            const worldHeight = rectHeight * tile.height;
+
+            rects.push(new Rectangle(worldX, worldY, worldWidth, worldHeight));
+        }
+    }
+
+    return rects;
 }
 
 function buildRectsFromLayerByProperty(layer) {
