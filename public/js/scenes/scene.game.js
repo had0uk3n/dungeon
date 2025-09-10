@@ -7,7 +7,6 @@ const WHITE = 0xffffff;
 const FILL_COLOR = BLACK;
 const DEBUG_STROKE_COLOR = WHITE;
 const DEBUG_FILL_COLOR = 0xff0000;
-const VELOCITY = 200;
 
 // Shortcuts
 const { Circle, Line, Point, Rectangle } = Phaser.Geom;
@@ -44,12 +43,17 @@ class Game extends Phaser.Scene
     {
         this.map = this.make.tilemap({ key: 'map' });
 
-        const tiles = this.map.addTilesetImage('tiles_atlas', 'tiles');
+        //const tiles = this.map.addTilesetImage('tiles_atlas', 'tiles');
+        const tsFloor = this.map.addTilesetImage('tiles_floor', 'tiles_floor');
+        const tsWalls = this.map.addTilesetImage('tiles_walls', 'tiles_walls');
 
-        this.layerFloor = this.map.createLayer(0, tiles, 0, 0); // floor
-        this.layerWalls = this.map.createLayer(1, tiles, 0, 0); // walls
-        // all tiles can collide, we just use collider for layer
-        this.map.setCollisionBetween(0, 5);
+        // this.layerFloor = this.map.createLayer(0, tiles, 0, 0); // floor
+        // this.layerWalls = this.map.createLayer(1, tiles, 0, 0); // walls
+        // // all tiles can collide, we just use collider for layer
+        // this.map.setCollisionBetween(0, 5);
+
+        this.layerFloor = this.map.createLayer('floor', [tsFloor, tsFloor], 0, 0);
+        this.layerWalls = this.map.createLayer('walls', [tsWalls, tsWalls], 0, 0);
 
         const mapRects = this.map.getObjectLayer('rects')['objects'];
 
@@ -69,7 +73,7 @@ class Game extends Phaser.Scene
 
         this.player = this.physics.add.sprite(cx, cy, 'player', 1);
 
-        this.player.setScale(2);
+        this.player.setScale(3);
 
         this.physics.add.collider(this.player, this.layerWalls);
 
@@ -528,22 +532,24 @@ function getBigRectsFromWallLayer(layer) {
     const width = layer.tilemap.width;
     const height = layer.tilemap.height;
 
+    // хелпер: тайл считается стеной, если collides=true (или свойство collides=true)
+    const isSolid = (t) => !!t && (t.collides === true || (t.properties && t.properties.collides === true));
+
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const tile = layer.getTileAt(x, y);
-            if (!tile || tile.index === -1) continue;
-
             const key = `${x},${y}`;
             if (visited.has(key)) continue;
 
-            // Start a new rectangle
+            const start = layer.getTileAt(x, y);
+            if (!isSolid(start)) continue;
+
             let rectWidth = 1;
             let rectHeight = 1;
 
-            // Expand to the right
+            // расширяем вправо по сплошным collides-тайлам
             while (x + rectWidth < width) {
-                const nextTile = layer.getTileAt(x + rectWidth, y);
-                if (nextTile && nextTile.index !== -1) {
+                const t = layer.getTileAt(x + rectWidth, y);
+                if (isSolid(t)) {
                     visited.add(`${x + rectWidth},${y}`);
                     rectWidth++;
                 } else {
@@ -551,15 +557,12 @@ function getBigRectsFromWallLayer(layer) {
                 }
             }
 
-            // Expand downwards
+            // расширяем вниз, пока вся следующая строка под прямоугольником — сплошная
             let canExpandDown = true;
             while (canExpandDown && (y + rectHeight) < height) {
                 for (let i = 0; i < rectWidth; i++) {
-                    const nextTile = layer.getTileAt(x + i, y + rectHeight);
-                    if (!nextTile || nextTile.index === -1) {
-                        canExpandDown = false;
-                        break;
-                    }
+                    const t = layer.getTileAt(x + i, y + rectHeight);
+                    if (!isSolid(t)) { canExpandDown = false; break; }
                 }
                 if (canExpandDown) {
                     for (let i = 0; i < rectWidth; i++) {
@@ -569,40 +572,22 @@ function getBigRectsFromWallLayer(layer) {
                 }
             }
 
-            // Mark all tiles in the rectangle as visited
+            // отмечаем весь прямоугольник посещённым
             for (let dy = 0; dy < rectHeight; dy++) {
                 for (let dx = 0; dx < rectWidth; dx++) {
                     visited.add(`${x + dx},${y + dy}`);
                 }
             }
 
-            // Add the rectangle to the list
-            const worldX = tile.getLeft();
-            const worldY = tile.getTop();
-            const worldWidth = rectWidth * tile.width;
-            const worldHeight = rectHeight * tile.height;
+            // переводим в мировые координаты
+            const worldX = start.getLeft();
+            const worldY = start.getTop();
+            const worldW = rectWidth * start.width;
+            const worldH = rectHeight * start.height;
 
-            rects.push(new Rectangle(worldX, worldY, worldWidth, worldHeight));
+            rects.push(new Phaser.Geom.Rectangle(worldX, worldY, worldW, worldH));
         }
     }
 
-    return rects;
-}
-
-function buildRectsFromLayerByProperty(layer) {
-    const rects = [];
-    layer.forEachTile(tile => {
-        if (!tile) return;
-
-        // после setCollisionByProperty Phaser помечает tile.collides
-        if (tile.collides === true) {
-            rects.push(new Phaser.Geom.Rectangle(
-                tile.getLeft(),
-                tile.getTop(),
-                tile.width,
-                tile.height
-            ));
-        }
-    });
     return rects;
 }
